@@ -1,0 +1,38 @@
+import os
+import requests
+from dotenv import load_dotenv
+from datetime import datetime, timedelta
+from config import ENV_FILE
+
+load_dotenv(ENV_FILE)
+
+API_KEY = os.getenv("ALPACA_API_KEY")
+SECRET_KEY = os.getenv("ALPACA_SECRET_KEY")
+
+HEADERS = {
+    "APCA-API-KEY-ID": API_KEY,
+    "APCA-API-SECRET-KEY": SECRET_KEY,
+}
+
+
+def get_price(symbol):
+    url = f"https://data.alpaca.markets/v2/stocks/{symbol}/trades/latest"
+    response = requests.get(url, headers=HEADERS)
+    response.raise_for_status()
+    data = response.json()
+    return data["trade"]["p"]
+
+
+def get_bars(symbol, limit=10):
+    start = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+    url = f"https://data.alpaca.markets/v2/stocks/{symbol}/bars"
+    params = {"timeframe": "1Day", "limit": 100, "start": start}
+    response = requests.get(url, headers=HEADERS, params=params)
+    response.raise_for_status()
+    data = response.json()
+    return data["bars"][-limit:]
+
+
+if __name__ == "__main__":
+    print(get_price("AAPL"))
+    print(get_bars("AAPL")[-1])
