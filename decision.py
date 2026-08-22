@@ -4,7 +4,17 @@ from ollama_client import ask_ollama
 from market_data import get_bars
 from db import init_db, log_decision, log_order
 from broker import place_order, get_position, get_account_balance
+from news_data import get_company_news
 from config import MODEL, SYMBOLS
+
+
+def get_news_safe(symbol):
+    """News is a nice-to-have; never let a Finnhub hiccup kill a whole run."""
+    try:
+        return get_company_news(symbol)
+    except Exception as e:
+        print(f"  (news fetch failed for {symbol}: {e})")
+        return []
 
 
 def describe_position(position):
@@ -21,7 +31,13 @@ def describe_position(position):
     )
 
 
-def build_prompt(symbol, bars, position):
+def describe_news(headlines):
+    if not headlines:
+        return "No recent news found for this symbol."
+    return "Recent headlines:\n" + "\n".join(f"- {h}" for h in headlines)
+
+
+def build_prompt(symbol, bars, position, headlines):
     closes = [bar["c"] for bar in bars]
     latest = closes[-1]
     change_pct = ((closes[-1] - closes[0]) / closes[0]) * 100
@@ -30,7 +46,9 @@ Last {len(closes)} daily closes: {closes}
 Latest close: {latest}
 Change over this period: {change_pct:.2f}%
 {describe_position(position)}
+{describe_news(headlines)}
 Decide: buy, sell, or hold. Note: buy while short closes/covers the short; sell while long closes the long; sell with no position opens a short.
+If the news is unrelated to why the price moved, say so rather than forcing a connection.
 Also state what you expect to happen next as a concrete, checkable prediction (e.g. "price rises above 315 within a few days"), not a vague statement.
 Respond with ONLY valid JSON, no other text, in exactly this format:
 {{"action": "buy|sell|hold", "confidence": 0.0-1.0, "reasoning": "...", "expected_outcome": "..."}}
@@ -60,11 +78,12 @@ def get_decision(symbol):
     bars = get_bars(symbol)
     position = get_position(symbol)
     balance = get_account_balance()
-    prompt = build_prompt(symbol, bars, position)
+    headlines = get_news_safe(symbol)
+    prompt = build_prompt(symbol, bars, position, headlines)
     raw = ask_ollama(prompt)
     decision = parse_decision(raw)
 
-    market_state = json.dumps({"bars": bars, "position": position})
+    market_state = json.dumps({"bars": bars, "position": position, "headlines": headlines})
     decision_id = log_decision(
         symbol,
         market_state,

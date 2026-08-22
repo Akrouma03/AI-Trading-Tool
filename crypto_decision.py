@@ -3,7 +3,8 @@ from ollama_client import ask_ollama
 from crypto_data import get_crypto_price, get_crypto_klines
 from crypto_broker import place_crypto_order, get_asset_balance
 from db import init_db, log_decision, log_order
-from decision import parse_decision
+from decision import parse_decision, describe_news
+from news_data import get_market_news
 from config import MODEL, CRYPTO_SYMBOLS
 
 
@@ -12,7 +13,15 @@ def base_asset(symbol):
     return symbol.replace("USDT", "")
 
 
-def build_prompt(symbol, bars, balance):
+def get_news_safe():
+    try:
+        return get_market_news()
+    except Exception as e:
+        print(f"  (news fetch failed: {e})")
+        return []
+
+
+def build_prompt(symbol, bars, balance, headlines):
     closes = [bar["c"] for bar in bars]
     latest = closes[-1]
     change_pct = ((closes[-1] - closes[0]) / closes[0]) * 100
@@ -21,18 +30,20 @@ Last {len(closes)} daily closes: {closes}
 Latest close: {latest}
 Change over this period: {change_pct:.2f}%
 You currently hold {balance} {base_asset(symbol)} (this is spot trading: you can only sell what you already hold, no shorting).
+{describe_news(headlines)}
 Decide: buy, sell, or hold.
+If the news is unrelated to why the price moved, say so rather than forcing a connection.
 Also state what you expect to happen next as a concrete, checkable prediction (e.g. "price rises above 68000 within a few days"), not a vague statement.
 Respond with ONLY valid JSON, no other text, in exactly this format:
 {{"action": "buy|sell|hold", "confidence": 0.0-1.0, "reasoning": "...", "expected_outcome": "..."}}
 """
 
 
-def get_crypto_decision(symbol):
+def get_crypto_decision(symbol, headlines):
     bars = get_crypto_klines(symbol)
     asset_balance = get_asset_balance(base_asset(symbol))
     usdt_balance = get_asset_balance("USDT")
-    prompt = build_prompt(symbol, bars, asset_balance)
+    prompt = build_prompt(symbol, bars, asset_balance, headlines)
     raw = ask_ollama(prompt)
     decision = parse_decision(raw)
 
@@ -40,7 +51,7 @@ def get_crypto_decision(symbol):
         decision["action"] = "hold"
         decision["reasoning"] += " (forced to hold: no balance to sell)"
 
-    market_state = json.dumps({"bars": bars, "asset_balance": asset_balance, "usdt_balance": usdt_balance})
+    market_state = json.dumps({"bars": bars, "asset_balance": asset_balance, "usdt_balance": usdt_balance, "headlines": headlines})
     decision_id = log_decision(
         symbol,
         market_state,
@@ -64,8 +75,9 @@ def get_crypto_decision(symbol):
 
 if __name__ == "__main__":
     init_db()
+    headlines = get_news_safe()
     for symbol in CRYPTO_SYMBOLS:
         try:
-            get_crypto_decision(symbol)
+            get_crypto_decision(symbol, headlines)
         except Exception as e:
             print(symbol, "FAILED:", e)
