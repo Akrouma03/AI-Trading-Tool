@@ -12,6 +12,8 @@ MODEL = "qwen3:8b"
 # when running the "same input -> same decision?" consistency study.
 TEMPERATURE = None
 
+CRYPTO_SYMBOLS = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT"]
+
 SYMBOLS = [
     "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "BRK.B", "AVGO", "JPM",
     "V", "UNH", "XOM", "MA", "PG", "HD", "COST", "MRK", "ABBV", "CVX",

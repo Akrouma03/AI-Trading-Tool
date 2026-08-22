@@ -66,12 +66,12 @@ def log_order(decision_id, order):
         "INSERT INTO orders (decision_id, order_id, symbol, side, qty, status, submitted_at, raw) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         (
             decision_id,
-            order.get("id"),
+            order.get("id") or order.get("orderId"),
             order.get("symbol"),
             order.get("side"),
-            order.get("qty"),
+            order.get("qty") or order.get("origQty") or order.get("executedQty"),
             "skipped" if order.get("skipped") else order.get("status"),
-            order.get("submitted_at"),
+            order.get("submitted_at") or order.get("transactTime"),
             json.dumps(order),
         ),
     )
