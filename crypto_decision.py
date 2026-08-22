@@ -22,23 +22,25 @@ Latest close: {latest}
 Change over this period: {change_pct:.2f}%
 You currently hold {balance} {base_asset(symbol)} (this is spot trading: you can only sell what you already hold, no shorting).
 Decide: buy, sell, or hold.
+Also state what you expect to happen next as a concrete, checkable prediction (e.g. "price rises above 68000 within a few days"), not a vague statement.
 Respond with ONLY valid JSON, no other text, in exactly this format:
-{{"action": "buy|sell|hold", "confidence": 0.0-1.0, "reasoning": "..."}}
+{{"action": "buy|sell|hold", "confidence": 0.0-1.0, "reasoning": "...", "expected_outcome": "..."}}
 """
 
 
 def get_crypto_decision(symbol):
     bars = get_crypto_klines(symbol)
-    balance = get_asset_balance(base_asset(symbol))
-    prompt = build_prompt(symbol, bars, balance)
+    asset_balance = get_asset_balance(base_asset(symbol))
+    usdt_balance = get_asset_balance("USDT")
+    prompt = build_prompt(symbol, bars, asset_balance)
     raw = ask_ollama(prompt)
     decision = parse_decision(raw)
 
-    if decision["action"] == "sell" and balance <= 0:
+    if decision["action"] == "sell" and asset_balance <= 0:
         decision["action"] = "hold"
         decision["reasoning"] += " (forced to hold: no balance to sell)"
 
-    market_state = json.dumps({"bars": bars, "balance": balance})
+    market_state = json.dumps({"bars": bars, "asset_balance": asset_balance, "usdt_balance": usdt_balance})
     decision_id = log_decision(
         symbol,
         market_state,
@@ -46,6 +48,8 @@ def get_crypto_decision(symbol):
         decision["confidence"],
         decision["reasoning"],
         MODEL,
+        balance_at_decision=usdt_balance,
+        expected_outcome=decision["expected_outcome"],
     )
 
     order = place_crypto_order(symbol, decision["action"])
@@ -53,7 +57,8 @@ def get_crypto_decision(symbol):
         log_order(decision_id, order)
 
     order_note = "no order (hold)" if order is None else order.get("status") or order.get("reason", "?")
-    print(f"{symbol}: {decision['action']} ({decision['confidence']}) -> {order_note}")
+    print(f"{symbol}: {decision['action']} ({decision['confidence']}) usdt_balance={usdt_balance:.2f} -> {order_note}")
+    print(f"  expects: {decision['expected_outcome']}")
     return decision
 
 

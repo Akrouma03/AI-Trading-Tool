@@ -3,7 +3,7 @@ import re
 from ollama_client import ask_ollama
 from market_data import get_bars
 from db import init_db, log_decision, log_order
-from broker import place_order, get_position
+from broker import place_order, get_position, get_account_balance
 from config import MODEL, SYMBOLS
 
 
@@ -31,8 +31,9 @@ Latest close: {latest}
 Change over this period: {change_pct:.2f}%
 {describe_position(position)}
 Decide: buy, sell, or hold. Note: buy while short closes/covers the short; sell while long closes the long; sell with no position opens a short.
+Also state what you expect to happen next as a concrete, checkable prediction (e.g. "price rises above 315 within a few days"), not a vague statement.
 Respond with ONLY valid JSON, no other text, in exactly this format:
-{{"action": "buy|sell|hold", "confidence": 0.0-1.0, "reasoning": "..."}}
+{{"action": "buy|sell|hold", "confidence": 0.0-1.0, "reasoning": "...", "expected_outcome": "..."}}
 """
 
 
@@ -51,12 +52,14 @@ def parse_decision(raw):
         "action": action,
         "confidence": confidence,
         "reasoning": str(decision.get("reasoning", "")),
+        "expected_outcome": str(decision.get("expected_outcome", "")),
     }
 
 
 def get_decision(symbol):
     bars = get_bars(symbol)
     position = get_position(symbol)
+    balance = get_account_balance()
     prompt = build_prompt(symbol, bars, position)
     raw = ask_ollama(prompt)
     decision = parse_decision(raw)
@@ -69,6 +72,8 @@ def get_decision(symbol):
         decision["confidence"],
         decision["reasoning"],
         MODEL,
+        balance_at_decision=balance,
+        expected_outcome=decision["expected_outcome"],
     )
 
     order = place_order(symbol, decision["action"])
@@ -76,7 +81,8 @@ def get_decision(symbol):
         log_order(decision_id, order)
 
     order_note = "no order (hold)" if order is None else order.get("status") or order.get("reason", "?")
-    print(f"{symbol}: {decision['action']} ({decision['confidence']}) -> {order_note}")
+    print(f"{symbol}: {decision['action']} ({decision['confidence']}) balance={balance:.2f} -> {order_note}")
+    print(f"  expects: {decision['expected_outcome']}")
     return decision
 
 

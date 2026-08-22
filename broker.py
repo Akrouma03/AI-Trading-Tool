@@ -15,6 +15,14 @@ HEADERS = {
 }
 
 
+def get_account_balance():
+    """Total portfolio equity right now (cash + all positions)."""
+    url = f"{BASE_URL}/v2/account"
+    response = requests.get(url, headers=HEADERS)
+    response.raise_for_status()
+    return float(response.json()["equity"])
+
+
 def get_position(symbol):
     """Current holding in this stock, or None if we hold nothing."""
     url = f"{BASE_URL}/v2/positions/{symbol}"

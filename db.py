@@ -15,9 +15,16 @@ def init_db():
             action TEXT,
             confidence REAL,
             reasoning TEXT,
-            model TEXT
+            model TEXT,
+            balance_at_decision REAL,
+            expected_outcome TEXT
         )
     """)
+    existing_columns = {row[1] for row in cursor.execute("PRAGMA table_info(decisions)")}
+    if "balance_at_decision" not in existing_columns:
+        cursor.execute("ALTER TABLE decisions ADD COLUMN balance_at_decision REAL")
+    if "expected_outcome" not in existing_columns:
+        cursor.execute("ALTER TABLE decisions ADD COLUMN expected_outcome TEXT")
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS outcomes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -46,12 +53,12 @@ def init_db():
     conn.close()
 
 
-def log_decision(symbol, market_state, action, confidence, reasoning, model):
+def log_decision(symbol, market_state, action, confidence, reasoning, model, balance_at_decision=None, expected_outcome=None):
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     cursor.execute(
-        "INSERT INTO decisions (timestamp, symbol, market_state, action, confidence, reasoning, model) VALUES (datetime('now'), ?, ?, ?, ?, ?, ?)",
-        (symbol, market_state, action, confidence, reasoning, model),
+        "INSERT INTO decisions (timestamp, symbol, market_state, action, confidence, reasoning, model, balance_at_decision, expected_outcome) VALUES (datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?)",
+        (symbol, market_state, action, confidence, reasoning, model, balance_at_decision, expected_outcome),
     )
     decision_id = cursor.lastrowid
     conn.commit()
