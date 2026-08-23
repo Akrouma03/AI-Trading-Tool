@@ -6,6 +6,7 @@ import requests
 from dotenv import load_dotenv
 from urllib.parse import urlencode
 from config import ENV_FILE
+from crypto_data import get_crypto_price
 
 load_dotenv(ENV_FILE)
 
@@ -55,6 +56,22 @@ def place_crypto_order(symbol, action, quote_qty=50):
         return {"skipped": True, "reason": f"open order already pending for {symbol}"}
 
     side = "BUY" if action == "buy" else "SELL"
+
+    if side == "SELL":
+        base_asset = symbol.replace("USDT", "")
+        free = get_asset_balance(base_asset)
+        price = get_crypto_price(symbol)
+        # cap the sell at what we actually hold, leaving a small margin for
+        # price drift between this check and order execution
+        quote_qty = min(quote_qty, free * price * 0.999)
+        if quote_qty <= 0:
+            return {"skipped": True, "reason": f"no {base_asset} balance to sell"}
+    else:
+        usdt_free = get_asset_balance("USDT")
+        quote_qty = min(quote_qty, usdt_free * 0.999)
+        if quote_qty <= 0:
+            return {"skipped": True, "reason": "no USDT balance to buy with"}
+
     params = {
         "symbol": symbol,
         "side": side,

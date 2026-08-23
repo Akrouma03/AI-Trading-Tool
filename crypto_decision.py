@@ -21,17 +21,18 @@ def get_news_safe():
         return []
 
 
-def build_prompt(symbol, bars, balance, headlines):
+def build_prompt(symbol, bars, asset_balance, usdt_balance, headlines):
     closes = [bar["c"] for bar in bars]
     latest = closes[-1]
     change_pct = ((closes[-1] - closes[0]) / closes[0]) * 100
+    base = base_asset(symbol)
     return f"""You are a crypto trading assistant. Symbol: {symbol} (trades 24/7).
 Last {len(closes)} daily closes: {closes}
 Latest close: {latest}
 Change over this period: {change_pct:.2f}%
-You currently hold {balance} {base_asset(symbol)} (this is spot trading: you can only sell what you already hold, no shorting).
+You currently hold {asset_balance} {base} and {usdt_balance:.2f} USDT available (this is spot trading: buy spends USDT to acquire {base}, sell converts {base} back to USDT, no shorting).
 {describe_news(headlines)}
-Decide: buy, sell, or hold.
+Decide: buy, sell, or hold, based on whether now is a good time to add to, trim, or leave your {base} position.
 If the news is unrelated to why the price moved, say so rather than forcing a connection.
 Also state what you expect to happen next as a concrete, checkable prediction (e.g. "price rises above 68000 within a few days"), not a vague statement.
 Respond with ONLY valid JSON, no other text, in exactly this format:
@@ -43,13 +44,16 @@ def get_crypto_decision(symbol, headlines):
     bars = get_crypto_klines(symbol)
     asset_balance = get_asset_balance(base_asset(symbol))
     usdt_balance = get_asset_balance("USDT")
-    prompt = build_prompt(symbol, bars, asset_balance, headlines)
+    prompt = build_prompt(symbol, bars, asset_balance, usdt_balance, headlines)
     raw = ask_ollama(prompt)
     decision = parse_decision(raw)
 
     if decision["action"] == "sell" and asset_balance <= 0:
         decision["action"] = "hold"
         decision["reasoning"] += " (forced to hold: no balance to sell)"
+    elif decision["action"] == "buy" and usdt_balance <= 0:
+        decision["action"] = "hold"
+        decision["reasoning"] += " (forced to hold: no USDT to buy with)"
 
     market_state = json.dumps({"bars": bars, "asset_balance": asset_balance, "usdt_balance": usdt_balance, "headlines": headlines})
     decision_id = log_decision(
