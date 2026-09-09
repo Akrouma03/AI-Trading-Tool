@@ -4,3 +4,5 @@ __pycache__/
 *.pyc
 trades.db
 logs/
+
+.watch_crypto.lock

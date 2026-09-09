@@ -2,7 +2,7 @@ import os
 import requests
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
-from config import ENV_FILE
+from config import ENV_FILE, HTTP_TIMEOUT
 
 load_dotenv(ENV_FILE)
 
@@ -15,7 +15,7 @@ def get_company_news(symbol, days=3, limit=5):
     from_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
     url = f"{BASE_URL}/company-news"
     params = {"symbol": symbol, "from": from_date, "to": to_date, "token": API_KEY}
-    response = requests.get(url, params=params)
+    response = requests.get(url, params=params, timeout=HTTP_TIMEOUT)
     response.raise_for_status()
     articles = response.json()
     headlines = [a["headline"] for a in articles[:limit]]
@@ -25,7 +25,7 @@ def get_company_news(symbol, days=3, limit=5):
 def get_market_news(limit=5):
     url = f"{BASE_URL}/news"
     params = {"category": "general", "token": API_KEY}
-    response = requests.get(url, params=params)
+    response = requests.get(url, params=params, timeout=HTTP_TIMEOUT)
     response.raise_for_status()
     articles = response.json()
     headlines = [a["headline"] for a in articles[:limit]]
