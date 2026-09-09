@@ -1,4 +1,5 @@
 import os
+import math
 import requests
 from dotenv import load_dotenv
 from config import ENV_FILE, HTTP_TIMEOUT, ALLOW_SHORTS, TARGET_NOTIONAL
@@ -55,6 +56,8 @@ def order_qty(symbol, price=None):
 
 
 def place_order(symbol, action, qty=None):
+    if action not in ("buy", "sell", "hold"):
+        raise ValueError("invalid action")
     if action == "hold":
         return None
 
@@ -78,6 +81,12 @@ def place_order(symbol, action, qty=None):
         else:
             qty = order_qty(symbol)
 
+    if not math.isfinite(float(qty)) or qty <= 0:
+        raise ValueError("quantity must be positive and finite")
+    if side == "sell" and held > 0:
+        qty = min(qty, held)
+    elif side == "buy" and held < 0:
+        qty = min(qty, abs(held))
     if qty < 1:
         return {"skipped": True, "reason": f"computed qty {qty} for {symbol} is below one whole share"}
     url = f"{BASE_URL}/v2/orders"

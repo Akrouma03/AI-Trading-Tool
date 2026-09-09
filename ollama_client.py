@@ -11,7 +11,7 @@ def generate(prompt, model=MODEL, temperature=TEMPERATURE, thinking=THINKING):
     back by Ollama so a decision is logged against the model that actually
     produced it rather than whatever config.MODEL happens to say.
     """
-    payload = {"model": model, "prompt": prompt, "stream": False}
+    payload = {"model": model, "prompt": prompt, "stream": False, "keep_alive": "2h"}
     if temperature is not None:
         payload["options"] = {"temperature": temperature}
     if thinking is not None:

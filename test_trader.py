@@ -24,7 +24,8 @@ class TestParseDecision(unittest.TestCase):
 
     def test_unterminated_thinking_block(self):
         raw = '<think>maybe {"action":"buy"} no\n' + ANSWER % ("sell", 0.9)
-        self.assertEqual(parse_decision(raw)["action"], "sell")
+        with self.assertRaises(ValueError):
+            parse_decision(raw)
 
     def test_markdown_fence_and_prose(self):
         raw = "Here is my call:\n```json\n" + ANSWER % ("sell", 0.4) + "\n```"

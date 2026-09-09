@@ -1,4 +1,5 @@
 import requests
+import time
 from config import HTTP_TIMEOUT, BINANCE_DATA_URL, CRYPTO_INTERVAL
 
 BASE_URL = BINANCE_DATA_URL
@@ -15,12 +16,14 @@ def get_crypto_price(symbol):
 
 def get_crypto_klines(symbol, limit=10, interval=CRYPTO_INTERVAL):
     url = f"{BASE_URL}/klines"
-    params = {"symbol": symbol, "interval": interval, "limit": limit}
+    params = {"symbol": symbol, "interval": interval, "limit": min(limit + 1, 1000)}
     response = requests.get(url, params=params, timeout=HTTP_TIMEOUT)
     response.raise_for_status()
     raw = response.json()
     bars = []
     for k in raw:
+        if k[6] >= int(time.time() * 1000):
+            continue
         bars.append({
             "t": k[0],
             "o": float(k[1]),
@@ -29,7 +32,7 @@ def get_crypto_klines(symbol, limit=10, interval=CRYPTO_INTERVAL):
             "c": float(k[4]),
             "v": float(k[5]),
         })
-    return bars
+    return bars[-limit:]
 
 def get_kline_after(symbol, start_ms, limit=1):
     """First daily kline at or after start_ms (epoch milliseconds), or None."""

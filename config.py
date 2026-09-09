@@ -40,6 +40,10 @@ MIN_BARS = 5
 # 5-minute loop re-asked the model the identical question ~50 times in a row
 # and traded on every repeat. Keep this and WATCH_INTERVAL_SECONDS in step.
 CRYPTO_INTERVAL = "1h"
+
+# 10 candles is too short a window to tell a trend from a spike -- every move
+# looks like a local extreme, which pushed the model into fading every rally.
+CRYPTO_BARS = 48
 WATCH_INTERVAL_SECONDS = 3600
 
 # Shorting is a deliberate part of this strategy, so this stays on. Be aware
@@ -53,7 +57,32 @@ ALLOW_SHORTS = True
 # one share of META ~$642.
 TARGET_NOTIONAL = 200.0
 
-CRYPTO_SYMBOLS = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT"]
+CRYPTO_SYMBOLS = [
+    "BTCUSDT",
+    "ETHUSDT",
+    "ZECUSDT",
+    "PROMUSDT",
+    "SOLUSDT",
+    "XRPUSDT",
+    "NEARUSDT",
+    "DOGEUSDT",
+    "SUIUSDT",
+    "HOLOUSDT",
+    "UNIUSDT",
+    "MARSCOINUSDT",
+    "PUMPUSDT",
+    "LINKUSDT",
+    "ADAUSDT",
+    "ENAUSDT",
+    "TAOUSDT",
+    "WLDUSDT",
+    "IOSTUSDT",
+    "DOTUSDT",
+    "PEPEUSDT",
+    "DASHUSDT",
+    "SAHARAUSDT",
+    "TRXUSDT",
+]
 
 SYMBOLS = [
     "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "BRK.B", "AVGO", "JPM",
