@@ -28,3 +28,6 @@ jobs:
             echo "importing $module"
             python -c "import $module"
           done
+
+      - name: Unit tests
+        run: python -m unittest discover -p "test_*.py" -v

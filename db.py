@@ -2,9 +2,17 @@ import json
 import sqlite3
 from config import DB_FILE
 
+# watch_crypto.py and check_outcomes.py can run at the same time; without a
+# busy timeout the second one fails instantly with "database is locked".
+CONNECT_TIMEOUT = 30
+
+
+def connect():
+    return sqlite3.connect(DB_FILE, timeout=CONNECT_TIMEOUT)
+
 
 def init_db():
-    conn = sqlite3.connect(DB_FILE)
+    conn = connect()
     cursor = conn.cursor()
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS decisions (
@@ -17,7 +25,9 @@ def init_db():
             reasoning TEXT,
             model TEXT,
             balance_at_decision REAL,
-            expected_outcome TEXT
+            expected_outcome TEXT,
+            price_at_decision REAL,
+            thinking TEXT
         )
     """)
     existing_columns = {row[1] for row in cursor.execute("PRAGMA table_info(decisions)")}
@@ -25,6 +35,10 @@ def init_db():
         cursor.execute("ALTER TABLE decisions ADD COLUMN balance_at_decision REAL")
     if "expected_outcome" not in existing_columns:
         cursor.execute("ALTER TABLE decisions ADD COLUMN expected_outcome TEXT")
+    if "price_at_decision" not in existing_columns:
+        cursor.execute("ALTER TABLE decisions ADD COLUMN price_at_decision REAL")
+    if "thinking" not in existing_columns:
+        cursor.execute("ALTER TABLE decisions ADD COLUMN thinking TEXT")
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS outcomes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -36,6 +50,8 @@ def init_db():
             correct TEXT
         )
     """)
+    # check_outcomes scans for decisions with no outcome row on every run
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_outcomes_decision_id ON outcomes(decision_id)")
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS orders (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -53,12 +69,12 @@ def init_db():
     conn.close()
 
 
-def log_decision(symbol, market_state, action, confidence, reasoning, model, balance_at_decision=None, expected_outcome=None):
-    conn = sqlite3.connect(DB_FILE)
+def log_decision(symbol, market_state, action, confidence, reasoning, model, balance_at_decision=None, expected_outcome=None, price_at_decision=None, thinking=None):
+    conn = connect()
     cursor = conn.cursor()
     cursor.execute(
-        "INSERT INTO decisions (timestamp, symbol, market_state, action, confidence, reasoning, model, balance_at_decision, expected_outcome) VALUES (datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?)",
-        (symbol, market_state, action, confidence, reasoning, model, balance_at_decision, expected_outcome),
+        "INSERT INTO decisions (timestamp, symbol, market_state, action, confidence, reasoning, model, balance_at_decision, expected_outcome, price_at_decision, thinking) VALUES (datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (symbol, market_state, action, confidence, reasoning, model, balance_at_decision, expected_outcome, price_at_decision, thinking),
     )
     decision_id = cursor.lastrowid
     conn.commit()
@@ -67,7 +83,7 @@ def log_decision(symbol, market_state, action, confidence, reasoning, model, bal
 
 
 def log_order(decision_id, order):
-    conn = sqlite3.connect(DB_FILE)
+    conn = connect()
     cursor = conn.cursor()
     cursor.execute(
         "INSERT INTO orders (decision_id, order_id, symbol, side, qty, status, submitted_at, raw) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -87,7 +103,7 @@ def log_order(decision_id, order):
 
 
 def log_outcome(decision_id, price_at_decision, price_now, pct_change, correct):
-    conn = sqlite3.connect(DB_FILE)
+    conn = connect()
     cursor = conn.cursor()
     cursor.execute(
         "INSERT INTO outcomes (decision_id, checked_at, price_at_decision, price_now, pct_change, correct) VALUES (?, datetime('now'), ?, ?, ?, ?)",

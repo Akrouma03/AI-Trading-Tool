@@ -5,14 +5,14 @@ import hashlib
 import requests
 from dotenv import load_dotenv
 from urllib.parse import urlencode
-from config import ENV_FILE
+from config import ENV_FILE, HTTP_TIMEOUT, BINANCE_TRADE_URL
 from crypto_data import get_crypto_price
 
 load_dotenv(ENV_FILE)
 
 API_KEY = os.getenv("BINANCE_API_KEY")
 SECRET_KEY = os.getenv("BINANCE_SECRET_KEY")
-BASE_URL = "https://testnet.binance.vision/api/v3"
+BASE_URL = BINANCE_TRADE_URL  # orders stay on the paper-trading testnet
 
 HEADERS = {"X-MBX-APIKEY": API_KEY}
 
@@ -28,7 +28,7 @@ def signed_request(method, path, params):
     params["signature"] = signature
 
     url = f"{BASE_URL}{path}"
-    response = requests.request(method, url, headers=HEADERS, params=params)
+    response = requests.request(method, url, headers=HEADERS, params=params, timeout=HTTP_TIMEOUT)
     return response
 
 
@@ -45,6 +45,9 @@ def has_open_order(symbol):
     response = signed_request("GET", "/openOrders", {"symbol": symbol})
     response.raise_for_status()
     return len(response.json()) > 0
+
+
+MIN_NOTIONAL = 10.0
 
 
 def place_crypto_order(symbol, action, quote_qty=50):
@@ -64,13 +67,16 @@ def place_crypto_order(symbol, action, quote_qty=50):
         # cap the sell at what we actually hold, leaving a small margin for
         # price drift between this check and order execution
         quote_qty = min(quote_qty, free * price * 0.999)
-        if quote_qty <= 0:
-            return {"skipped": True, "reason": f"no {base_asset} balance to sell"}
+        if quote_qty < MIN_NOTIONAL:
+            return {"skipped": True, "reason": f"{base_asset} holding worth {quote_qty:.2f} USDT is below the {MIN_NOTIONAL} minimum"}
     else:
         usdt_free = get_asset_balance("USDT")
         quote_qty = min(quote_qty, usdt_free * 0.999)
-        if quote_qty <= 0:
-            return {"skipped": True, "reason": "no USDT balance to buy with"}
+        if quote_qty < MIN_NOTIONAL:
+            return {"skipped": True, "reason": f"{quote_qty:.2f} USDT free is below the {MIN_NOTIONAL} minimum"}
+
+    # Binance rejects quoteOrderQty with more precision than the quote asset allows
+    quote_qty = round(quote_qty, 2)
 
     params = {
         "symbol": symbol,
@@ -79,7 +85,18 @@ def place_crypto_order(symbol, action, quote_qty=50):
         "quoteOrderQty": quote_qty,
     }
     response = signed_request("POST", "/order", params)
-    return response.json()
+    result = response.json()
+
+    # A Binance rejection is a 4xx with {"code": -2010, "msg": ...}. Passing it
+    # straight through wrote error bodies into the orders table as real orders.
+    if response.status_code >= 400 or "code" in result:
+        return {
+            "skipped": True,
+            "reason": f"order rejected ({result.get('code')}): {result.get('msg', result)}",
+            "symbol": symbol,
+            "side": side,
+        }
+    return result
 
 
 if __name__ == "__main__":

@@ -1,11 +1,11 @@
 import json
-from ollama_client import ask_ollama
+from ollama_client import generate
 from crypto_data import get_crypto_price, get_crypto_klines
 from crypto_broker import place_crypto_order, get_asset_balance
 from db import init_db, log_decision, log_order
-from decision import parse_decision, describe_news
+from decision import parse_decision, describe_news, gate_by_confidence, require_history
 from news_data import get_market_news
-from config import MODEL, CRYPTO_SYMBOLS
+from config import CRYPTO_SYMBOLS, CRYPTO_INTERVAL
 
 
 def base_asset(symbol):
@@ -22,12 +22,13 @@ def get_news_safe():
 
 
 def build_prompt(symbol, bars, asset_balance, usdt_balance, headlines):
+    require_history(symbol, bars)
     closes = [bar["c"] for bar in bars]
     latest = closes[-1]
     change_pct = ((closes[-1] - closes[0]) / closes[0]) * 100
     base = base_asset(symbol)
     return f"""You are a crypto trading assistant. Symbol: {symbol} (trades 24/7).
-Last {len(closes)} daily closes: {closes}
+Last {len(closes)} closes ({CRYPTO_INTERVAL} candles): {closes}
 Latest close: {latest}
 Change over this period: {change_pct:.2f}%
 You currently hold {asset_balance} {base} and {usdt_balance:.2f} USDT available (this is spot trading: buy spends USDT to acquire {base}, sell converts {base} back to USDT, no shorting).
@@ -42,10 +43,12 @@ Respond with ONLY valid JSON, no other text, in exactly this format:
 
 def get_crypto_decision(symbol, headlines):
     bars = get_crypto_klines(symbol)
+    price_at_decision = get_crypto_price(symbol)
     asset_balance = get_asset_balance(base_asset(symbol))
     usdt_balance = get_asset_balance("USDT")
     prompt = build_prompt(symbol, bars, asset_balance, usdt_balance, headlines)
-    raw = ask_ollama(prompt)
+    result = generate(prompt)
+    raw, thinking = result["response"], result["thinking"]
     decision = parse_decision(raw)
 
     if decision["action"] == "sell" and asset_balance <= 0:
@@ -62,12 +65,14 @@ def get_crypto_decision(symbol, headlines):
         decision["action"],
         decision["confidence"],
         decision["reasoning"],
-        MODEL,
+        result["model"],
         balance_at_decision=usdt_balance,
         expected_outcome=decision["expected_outcome"],
+        price_at_decision=price_at_decision,
+        thinking=thinking,
     )
 
-    order = place_crypto_order(symbol, decision["action"])
+    order = gate_by_confidence(decision) or place_crypto_order(symbol, decision["action"])
     if order is not None:
         log_order(decision_id, order)
 
